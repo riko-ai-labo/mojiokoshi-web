@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文字起こしするちゃん</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="header">
+    <h1>🎙️ 文字起こしするちゃん <span class="badge">Web版</span></h1>
+    <span id="userChip" class="user-chip" hidden>
+      <span id="userChipText"></span>
+      <button id="btnLogout" class="btn-mini" type="button">キーを変更</button>
+    </span>
+  </header>
+
+  <nav id="pageNav" class="page-nav" hidden>
+    <button id="navMain" class="nav-btn active" type="button">文字起こし</button>
+    <button id="navDict" class="nav-btn" type="button">チーム辞書</button>
+  </nav>
+
+  <main class="container">
+    <div id="errorBox" class="error-box" hidden></div>
+
+    <!-- 設定未完了の警告 -->
+    <section id="setupWarning" class="card warn-card" hidden>
+      <h2>⚙️ セットアップが必要です</h2>
+      <p>js/config.js の <code>GAS_URL</code> が未設定です。<br>
+      管理者の方は docs/SETUP.md の手順に沿って設定してください。</p>
+    </section>
+
+    <!-- ライセンスキー入力（ここを通らないと何も使えない。照合はサーバー側） -->
+    <section id="licenseSection" class="card center" hidden>
+      <h2>🔑 ライセンスキーを入力してください</h2>
+      <p class="muted small">お渡ししたキー（例: MOJI-XXXX-XXXX-XXXX）を入力してください。<br>
+      一度入力すると、このブラウザでは次回から自動で入れます。</p>
+      <form id="licenseForm" class="license-form">
+        <input id="licenseInput" class="license-input" type="text" inputmode="latin" autocomplete="off"
+          autocapitalize="characters" spellcheck="false" placeholder="MOJI-XXXX-XXXX-XXXX" maxlength="40">
+        <button id="btnLicense" class="btn btn-primary" type="submit">はじめる</button>
+      </form>
+      <p id="licenseMsg" class="license-msg" hidden></p>
+    </section>
+
+    <!-- 起動時のキー確認中 -->
+    <section id="licenseChecking" class="card center" hidden>
+      <p class="muted">ライセンスを確認しています...</p>
+    </section>
+
+    <!-- メインページ -->
+    <div id="pageMain">
+      <section id="mainSection" class="card" hidden>
+        <div id="restoreBox" class="restore-box" hidden>
+          <span id="restoreText"></span>
+          <button id="btnRestoreResult" class="btn-mini" type="button">表示する</button>
+        </div>
+
+        <div id="dropZone" class="drop-zone">
+          <p class="drop-main">🎬 ここにファイルをドラッグ＆ドロップ<br>またはクリックして選択</p>
+          <p class="muted small">MP3 / M4A / WAV / MP4 / MOV / WEBM ・ 最大2GB ・ 3時間の動画もOK<br>
+          動画は音声だけを抜き出して送るので、大きなファイルでも速く終わります</p>
+          <input type="file" id="fileInput"
+            accept=".mp3,.m4a,.aac,.wav,.ogg,.flac,.mp4,.m4v,.mov,.webm,audio/*,video/mp4,video/quicktime,video/webm" hidden>
+        </div>
+        <div id="fileInfo" class="file-info" hidden></div>
+
+        <div id="optionsRow" class="options-block" hidden>
+          <div class="options-checks">
+            <label><input type="checkbox" id="optTimestamps"> タイムスタンプを付ける</label>
+            <label><input type="checkbox" id="optSpeakers" checked> 話者を区別する</label>
+          </div>
+          <label class="hint-label">内容のヒント <span class="muted">（任意・固有名詞の精度が上がります。次回も残ります）</span>
+            <textarea id="optHint" rows="2"
+              placeholder="例: ○○講座 第3回。講師: 山田太郎、参加者: 佐藤。よく出る用語: クレアカ、ぽちペタ、Gemini"></textarea>
+          </label>
+          <div id="resumeNote" class="resume-note" hidden>
+            <span id="resumeNoteText"></span>
+            <button id="btnDiscardJob" class="btn-mini" type="button">最初からやり直す</button>
+          </div>
+          <div class="start-row">
+            <button id="btnStart" class="btn btn-primary" type="button" disabled>文字起こしを開始</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 進捗 -->
+      <section id="progressSection" class="card" hidden>
+        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+        <p id="progressMsg" class="progress-msg"></p>
+        <p id="progressDetail" class="muted small"></p>
+        <p id="progressEta" class="progress-eta"></p>
+        <p class="muted small">処理中はこのタブを閉じないでください。万一途切れても、同じファイルをもう一度開始すれば続きから再開します。</p>
+      </section>
+
+      <!-- 結果 -->
+      <section id="resultSection" class="card" hidden>
+        <div id="resultNotice" class="result-notice" hidden></div>
+        <div class="result-tabs">
+          <button id="btnTabTranscript" class="tab-btn active" type="button">文字起こし</button>
+          <button id="btnTabSummary" class="tab-btn" type="button">要約・整形</button>
+          <span id="resultStatus" class="result-status"></span>
+        </div>
+
+        <div id="tabTranscript">
+          <textarea id="transcriptArea" class="result-area" spellcheck="false"></textarea>
+        </div>
+        <div id="tabSummary" hidden>
+          <p class="area-label">要約</p>
+          <textarea id="summaryArea" class="result-area small-area" spellcheck="false"></textarea>
+          <p class="area-label">整形テキスト</p>
+          <textarea id="refinedArea" class="result-area" spellcheck="false"></textarea>
+        </div>
+
+        <div class="button-row">
+          <button id="btnSave" class="btn btn-primary" type="button" hidden>📄 Googleドライブに保存</button>
+          <button id="btnLearn" class="btn btn-soft" type="button">📖 修正を辞書に学習</button>
+          <button id="btnCopy" class="btn btn-soft" type="button">コピー</button>
+          <button id="btnDownload" class="btn btn-soft" type="button">txt保存</button>
+        </div>
+
+        <p id="saveHelp" class="muted small" hidden>「Googleドライブに保存」を押すとGoogleのログイン画面が開きます（初回のみ）。
+        アクセスするのは、このアプリが作成したファイルだけです。ログインしなくても、コピーとtxt保存は使えます。</p>
+
+        <div id="savedBox" class="saved-box" hidden>
+          ✅ 保存しました：<a id="savedLink" href="#" target="_blank" rel="noopener">スプレッドシートを開く</a>
+        </div>
+
+        <!-- 辞書学習パネル -->
+        <div id="learnPanel" class="learn-panel" hidden>
+          <p><b>この単語の直しを辞書に登録しますか？</b><br>
+          <span class="muted small">登録すると、チーム全員の次回以降の文字起こしで自動修正されます。</span></p>
+          <div id="learnList"></div>
+          <div class="button-row">
+            <button id="btnLearnApply" class="btn btn-primary" type="button">チーム辞書に登録</button>
+            <button id="btnLearnCancel" class="btn btn-soft" type="button">キャンセル</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 辞書管理ページ -->
+    <div id="pageDict" hidden>
+      <section class="card">
+        <h2>📖 チーム共有辞書</h2>
+        <p class="muted small">「読み」で聞こえた言葉は必ず「表記」で出力されます。誤認識例は文字起こし後にも強制修正されます。<br>ここでの変更はチーム全員に反映されます。</p>
+        <table class="dict-table">
+          <thead>
+            <tr><th>表記</th><th>読み</th><th>誤認識例（|区切り）</th><th></th></tr>
+          </thead>
+          <tbody id="dictBody"></tbody>
+        </table>
+        <div class="button-row">
+          <button id="btnDictAddRow" class="btn btn-soft" type="button">＋行を追加</button>
+          <button id="btnDictSave" class="btn btn-primary" type="button">保存</button>
+          <button id="btnDictReload" class="btn btn-soft" type="button">再読み込み</button>
+          <span id="dictStatus" class="muted small"></span>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
