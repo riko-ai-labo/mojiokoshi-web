@@ -10,17 +10,17 @@
  * 途中経過は localStorage に保存し、失敗やタブ閉じの後も同じファイルなら続きから再開する。
  */
 
-import { initAuth, ensureToken } from './google-auth.js';
-import { gasCall } from './gas-client.js';
-import { getLicenseKey, setLicenseKey, clearLicenseKey } from './license.js';
-import { uploadBlob, waitForActive, getMimeType, isVideoMime, SUPPORTED_EXTENSIONS } from './upload.js';
-import { analyzeMedia, planChunks } from './media-split.js';
-import { parseLines, absolutizeLines, mergeChunks, serializeLines } from './merge.js';
-import { applyDictionary, suggestCorrections } from './dictionary.js';
-import { saveToDrive } from './drive-save.js';
+import { initAuth, ensureToken } from './google-auth.js?v=2.1.2';
+import { gasCall } from './gas-client.js?v=2.1.2';
+import { getLicenseKey, setLicenseKey, clearLicenseKey } from './license.js?v=2.1.2';
+import { uploadBlob, waitForActive, getMimeType, isVideoMime, SUPPORTED_EXTENSIONS } from './upload.js?v=2.1.2';
+import { analyzeMedia, planChunks } from './media-split.js?v=2.1.2';
+import { parseLines, absolutizeLines, mergeChunks, serializeLines } from './merge.js?v=2.1.2';
+import { applyDictionary, suggestCorrections } from './dictionary.js?v=2.1.2';
+import { saveToDrive } from './drive-save.js?v=2.1.2';
 import {
   fileKey, loadJob, saveJob, clearJob, loadResult, saveResult, clearResult, loadHint, saveHint,
-} from './storage.js';
+} from './storage.js?v=2.1.2';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // Gemini Files APIの上限
 const CHUNK_SEC = 15 * 60; // 15分ごとに文字起こし

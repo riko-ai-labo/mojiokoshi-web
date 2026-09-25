@@ -26,6 +26,18 @@ export function fmtTs(sec) {
   return `[${p(Math.floor(sec / 3600))}:${p(Math.floor((sec % 3600) / 60))}:${p(sec % 60)}]`;
 }
 
+// 日本語の文字（ひらがな・カタカナ・漢字・和文の記号・全角記号）
+const JA = '\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff01-\uff9f';
+const JA_SPACE = new RegExp(`(?<=[${JA}])[ \u3000]+(?=[${JA}])`, 'g');
+
+/**
+ * 日本語の単語の間に入った余計な空白を消す（Geminiが「文字 起こし の テスト」のように分かち書きで返すことがある）。
+ * 両側が日本語の文字のときだけ消すので、「講師: 山田」や英単語の間の空白は残る。
+ */
+export function fixJaSpacing(text) {
+  return String(text).replace(JA_SPACE, '');
+}
+
 /** テキストを { ts, body } の行配列にする（空行は捨てる） */
 export function parseLines(text) {
   const lines = [];
@@ -33,7 +45,7 @@ export function parseLines(text) {
     const line = raw.trim();
     if (!line) continue;
     const ts = parseTs(line);
-    const body = ts === null ? line : line.replace(TS_HEAD, '').trim();
+    const body = fixJaSpacing(ts === null ? line : line.replace(TS_HEAD, '').trim());
     if (!body) continue;
     lines.push({ ts, body });
   }

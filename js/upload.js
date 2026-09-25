@@ -4,7 +4,7 @@
  * base64を経由しないため、Files APIの上限（2GB）までメモリを圧迫せずに扱える。
  */
 
-import { gasCall } from './gas-client.js';
+import { gasCall } from './gas-client.js?v=2.1.2';
 
 /** ファイル丸ごと送る場合のMIME（Geminiのサポート表記に合わせる） */
 const WHOLE_FILE_MIME = {

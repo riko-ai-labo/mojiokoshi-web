@@ -1,7 +1,7 @@
 // 実行方法: node test/merge.test.mjs
 import {
   parseTs, fmtTs, parseLines, serializeLines, absolutizeLines,
-  similarity, joinAtBoundary, mergeChunks, stripTimestamps,
+  similarity, joinAtBoundary, mergeChunks, stripTimestamps, fixJaSpacing,
 } from '../js/merge.js';
 
 let passed = 0;
@@ -98,6 +98,13 @@ console.log('mergeChunks');
   eq(mergeChunks([{ nominalStart: 0, lines: [] }, { nominalStart: 900, lines: parseLines('[00:15:00] x') }]).length, 1, '空チャンクがあっても動く');
 }
 eq(stripTimestamps('[00:01:00] a\n[02:03] b\nc'), 'a\nb\nc', 'stripTimestamps');
+
+console.log('fixJaSpacing');
+eq(fixJaSpacing('共和 文字 起こし の 動作 テスト です 。'), '共和文字起こしの動作テストです。', '分かち書きの空白を消す');
+eq(fixJaSpacing('はい　そう です'), 'はいそうです', '全角空白も消す');
+eq(fixJaSpacing('講師: 山田 です'), '講師: 山田です', '話者ラベルの後ろの空白は残す');
+eq(fixJaSpacing('Hello world'), 'Hello world', '英語の空白は残す');
+eq(parseLines('[00:00:03] 講師: みなさん こんにちは 。')[0].body, '講師: みなさんこんにちは。', 'parseLinesで自動的に整える');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
