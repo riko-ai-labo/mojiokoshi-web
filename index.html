@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=Inter:wght@600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=2.1.2">
+  <link rel="stylesheet" href="css/style.css?v=2.2.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -122,6 +122,38 @@
             </button>
           </div>
         </div>
+
+        <!-- カスタム指示（整形・要約） -->
+        <details id="promptPanel" class="prompt-panel">
+          <summary>
+            <span class="prompt-title">カスタム指示</span>
+            <span class="muted small">整形・要約の出し方を自分で決める（任意）</span>
+            <span id="promptBadge" class="prompt-badge" hidden>使用中</span>
+          </summary>
+          <div class="prompt-body">
+            <p class="muted small">空欄なら既定の指示で処理します。書いた指示はこのブラウザに保存され、次回も使われます。
+            チーム辞書・「結果の本文だけを出す」・文字起こし本文は、指示を変えても自動で付け足されます。</p>
+            <label class="field">
+              <span class="field-label">整形の指示</span>
+              <textarea id="promptRefine" rows="5" maxlength="4000" spellcheck="false"
+                placeholder="例: です・ます調に統一し、話題ごとに見出しを付けて、ブログ記事として読める形に整えてください"></textarea>
+            </label>
+            <div class="prompt-actions">
+              <button id="btnRefineDefault" class="btn-mini" type="button">既定の指示を読み込む</button>
+              <button id="btnRefineClear" class="btn-mini" type="button">空にする</button>
+            </div>
+            <label class="field">
+              <span class="field-label">要約の指示</span>
+              <textarea id="promptSummary" rows="5" maxlength="4000" spellcheck="false"
+                placeholder="例: 受講生向けの復習メモとして、学んだこと3つ・明日やること・印象に残った言葉 の3項目でまとめてください"></textarea>
+            </label>
+            <div class="prompt-actions">
+              <button id="btnSummaryDefault" class="btn-mini" type="button">既定の指示を読み込む</button>
+              <button id="btnSummaryClear" class="btn-mini" type="button">空にする</button>
+              <span id="promptStatus" class="muted small"></span>
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- 進捗 -->
@@ -156,6 +188,13 @@
           <textarea id="summaryArea" class="result-area small-area" spellcheck="false" aria-label="要約"></textarea>
           <p class="area-label">整形テキスト</p>
           <textarea id="refinedArea" class="result-area" spellcheck="false" aria-label="整形テキスト"></textarea>
+          <div class="redo-row">
+            <span class="muted small">「カスタム指示」を変えたら、文字起こしはそのままで作り直せます</span>
+            <span class="redo-buttons">
+              <button id="btnRedoSummary" class="btn btn-outline btn-sm" type="button">要約を作り直す</button>
+              <button id="btnRedoRefine" class="btn btn-outline btn-sm" type="button">整形を作り直す</button>
+            </span>
+          </div>
         </div>
 
         <div class="button-row">
@@ -212,7 +251,7 @@
 
   <footer class="footer">MOJI-OKO</footer>
 
-  <script src="js/config.js?v=2.1.2"></script>
-  <script type="module" src="js/app.js?v=2.1.2"></script>
+  <script src="js/config.js?v=2.2.0"></script>
+  <script type="module" src="js/app.js?v=2.2.0"></script>
 </body>
 </html>

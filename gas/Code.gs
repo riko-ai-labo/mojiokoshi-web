@@ -29,7 +29,7 @@
  *   - 文字起こしの利用分数を人ごと・月ごとに集計し、「月の上限(分)」を超えたら止める。
  */
 
-var VERSION = '2.1.1';
+var VERSION = '2.2.0';
 var DEFAULT_MODEL = 'gemini-2.5-flash';
 var GEMINI_BASE = 'https://generativelanguage.googleapis.com';
 
@@ -91,6 +91,7 @@ function doPost(e) {
       transcribe: transcribe,
       refine: refine,
       summarize: summarize,
+      promptDefaults: promptDefaults,
       dictGet: dictGet,
       dictAdd: dictAdd,
       dictUpdate: dictUpdate
@@ -377,35 +378,56 @@ function transcribe(d) {
 
 // ================================================================ 整形・要約
 
-/** d: { text, chunkIndex, totalChunks, prevTail } — 整形（内容を保ったまま読みやすく） */
+// 整形・要約の指示の既定値。利用者は画面の「カスタム指示」で丸ごと差し替えられる。
+// 「本文のみを出力」「辞書」「分割の注意」「直前の末尾」「文字起こし本体」は、差し替えても必ず付く。
+var DEFAULT_REFINE_PROMPT =
+  '以下の文字起こしテキストを、内容を保ったまま読みやすく整形してください。\n' +
+  '・フィラーや言い直しを取り除き、話し言葉のくだけた表現は残しつつ句読点を整える\n' +
+  '・意味のまとまりで段落分けする（1段落は長くても数行）\n' +
+  '・内容の追加・要約・省略・言い換えはしない（読みやすくする整形のみ）\n' +
+  '・行頭の [HH:MM:SS] タイムスタンプは、段落の先頭に残す（段落内の途中のものは省いてよい）\n' +
+  '・話者表記（話者A: など）は残す';
+
+var DEFAULT_SUMMARY_PROMPT =
+  '以下の文字起こし全体を読み、次の構成で日本語の要約を作成してください。\n' +
+  '■概要\n（3〜5行で全体を要約）\n' +
+  '■主なトピック\n（箇条書き。入力にタイムスタンプがあれば各項目の先頭に [HH:MM:SS] を添える）\n' +
+  '■重要な発言・ポイント\n（箇条書き。後で読み返す人が押さえるべき点）\n' +
+  '■決定事項・TODO\n（該当がある場合のみ。無ければこの見出しごと省略）';
+
+var CUSTOM_PROMPT_MAX = 4000;
+
+/** 利用者のカスタム指示（空なら既定の指示） */
+function promptOrDefault_(custom, def) {
+  var text = String(custom || '').trim();
+  return text ? text.slice(0, CUSTOM_PROMPT_MAX) : def;
+}
+
+/** 画面の「既定の指示を読み込む」ボタン用 */
+function promptDefaults() {
+  return { refine: DEFAULT_REFINE_PROMPT, summarize: DEFAULT_SUMMARY_PROMPT, maxLength: CUSTOM_PROMPT_MAX };
+}
+
+/** d: { text, chunkIndex, totalChunks, prevTail, customPrompt } — 整形（長文は分割して順に呼ばれる） */
 function refine(d) {
   var dic = readDict_();
   var part = (d.totalChunks > 1)
-    ? '（これは全' + d.totalChunks + '分割中の' + (d.chunkIndex + 1) +
+    ? '\n（これは全' + d.totalChunks + '分割中の' + (d.chunkIndex + 1) +
       '番目の部分です。冒頭や末尾が文の途中でも、補ったり削ったりしないこと）'
     : '';
-  var prompt = '以下の文字起こしテキストを、内容を保ったまま読みやすく整形してください。' + part + '\n' +
-    '・フィラーや言い直しを取り除き、話し言葉のくだけた表現は残しつつ句読点を整える\n' +
-    '・意味のまとまりで段落分けする（1段落は長くても数行）\n' +
-    '・内容の追加・要約・省略・言い換えはしない（読みやすくする整形のみ）\n' +
-    '・行頭の [HH:MM:SS] タイムスタンプは、段落の先頭に残す（段落内の途中のものは省いてよい）\n' +
-    '・話者表記（話者A: など）は残す\n' +
-    '・前置きや説明は書かず、整形後の本文のみを出力する' +
+  var prompt = promptOrDefault_(d.customPrompt, DEFAULT_REFINE_PROMPT) + part + '\n' +
+    '・前置きや説明は書かず、結果の本文のみを出力する' +
     buildDictPrompt_(dic) +
-    (d.prevTail ? '\n\n【直前の部分の整形結果の末尾（文体・話者表記を揃える参考。再出力しない）】\n' + String(d.prevTail).slice(0, 600) : '') +
+    (d.prevTail ? '\n\n【直前の部分の結果の末尾（文体・話者表記を揃える参考。再出力しない）】\n' + String(d.prevTail).slice(0, 600) : '') +
     '\n\n【文字起こしテキスト】\n' + d.text;
   return { text: generate_([{ text: prompt }], { temperature: 0.3, thinkingBudget: 0 }).text };
 }
 
-/** d: { text, hint } — 全体要約 */
+/** d: { text, hint, customPrompt } — 全体要約 */
 function summarize(d) {
-  var prompt = '以下の文字起こし全体を読み、次の構成で日本語の要約を作成してください。\n' +
+  var prompt = promptOrDefault_(d.customPrompt, DEFAULT_SUMMARY_PROMPT) + '\n' +
     (d.hint ? '（この音声について: ' + String(d.hint).slice(0, 1000) + '）\n' : '') +
-    '■概要\n（3〜5行で全体を要約）\n' +
-    '■主なトピック\n（箇条書き。入力にタイムスタンプがあれば各項目の先頭に [HH:MM:SS] を添える）\n' +
-    '■重要な発言・ポイント\n（箇条書き。後で読み返す人が押さえるべき点）\n' +
-    '■決定事項・TODO\n（該当がある場合のみ。無ければこの見出しごと省略）\n' +
-    '前置きや説明は書かず、要約本文のみを出力してください。' +
+    '前置きや説明は書かず、結果の本文のみを出力してください。' +
     '\n\n【文字起こし】\n' + d.text;
   return { text: generate_([{ text: prompt }], { temperature: 0.4 }).text };
 }

@@ -25,6 +25,9 @@ http.createServer((req, res) => {
       else if (d.action === 'licenseCheck') out = { success: true, data: { name: 'テスト太郎', expires: '2026-12-31', limitMin: null } };
       else if (d.action === 'dictGet') out = { success: true, data: { entries: dict } };
       else if (d.action === 'dictUpdate') { dict = d.entries; out = { success: true, data: { entries: dict } }; }
+      else if (d.action === 'promptDefaults') out = { success: true, data: { refine: '（既定の整形の指示）', summarize: '（既定の要約の指示）', maxLength: 4000 } };
+      else if (d.action === 'refine') out = { success: true, data: { text: '【整形】指示=' + (d.customPrompt || '既定') + ' / ' + d.text.slice(0, 40) } };
+      else if (d.action === 'summarize') out = { success: true, data: { text: '【要約】指示=' + (d.customPrompt || '既定') } };
       else out = { success: false, message: '模擬サーバーでは未対応: ' + d.action };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(out));

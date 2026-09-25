@@ -10,17 +10,18 @@
  * 途中経過は localStorage に保存し、失敗やタブ閉じの後も同じファイルなら続きから再開する。
  */
 
-import { initAuth, ensureToken } from './google-auth.js?v=2.1.2';
-import { gasCall } from './gas-client.js?v=2.1.2';
-import { getLicenseKey, setLicenseKey, clearLicenseKey } from './license.js?v=2.1.2';
-import { uploadBlob, waitForActive, getMimeType, isVideoMime, SUPPORTED_EXTENSIONS } from './upload.js?v=2.1.2';
-import { analyzeMedia, planChunks } from './media-split.js?v=2.1.2';
-import { parseLines, absolutizeLines, mergeChunks, serializeLines } from './merge.js?v=2.1.2';
-import { applyDictionary, suggestCorrections } from './dictionary.js?v=2.1.2';
-import { saveToDrive } from './drive-save.js?v=2.1.2';
+import { initAuth, ensureToken } from './google-auth.js?v=2.2.0';
+import { gasCall } from './gas-client.js?v=2.2.0';
+import { getLicenseKey, setLicenseKey, clearLicenseKey } from './license.js?v=2.2.0';
+import { uploadBlob, waitForActive, getMimeType, isVideoMime, SUPPORTED_EXTENSIONS } from './upload.js?v=2.2.0';
+import { analyzeMedia, planChunks } from './media-split.js?v=2.2.0';
+import { parseLines, absolutizeLines, mergeChunks, serializeLines } from './merge.js?v=2.2.0';
+import { applyDictionary, suggestCorrections } from './dictionary.js?v=2.2.0';
+import { saveToDrive } from './drive-save.js?v=2.2.0';
 import {
   fileKey, loadJob, saveJob, clearJob, loadResult, saveResult, clearResult, loadHint, saveHint,
-} from './storage.js?v=2.1.2';
+  loadPrompts, savePrompts,
+} from './storage.js?v=2.2.0';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // Gemini Files APIの上限
 const CHUNK_SEC = 15 * 60; // 15分ごとに文字起こし
@@ -50,6 +51,7 @@ const state = {
 window.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   $('optHint').value = loadHint();
+  initPrompts();
 
   const { GAS_URL, OAUTH_CLIENT_ID } = window.APP_CONFIG || {};
   if (!GAS_URL) {
@@ -139,6 +141,15 @@ function bindEvents() {
   $('btnLearnCancel').addEventListener('click', () => hide('learnPanel'));
 
   $('btnDictReload').addEventListener('click', loadDictPage);
+
+  $('promptRefine').addEventListener('input', onPromptInput);
+  $('promptSummary').addEventListener('input', onPromptInput);
+  $('btnRefineDefault').addEventListener('click', () => loadDefaultPrompt('refine', 'promptRefine'));
+  $('btnSummaryDefault').addEventListener('click', () => loadDefaultPrompt('summarize', 'promptSummary'));
+  $('btnRefineClear').addEventListener('click', () => setPrompt('promptRefine', ''));
+  $('btnSummaryClear').addEventListener('click', () => setPrompt('promptSummary', ''));
+  $('btnRedoRefine').addEventListener('click', redoRefine);
+  $('btnRedoSummary').addEventListener('click', redoSummary);
   $('btnDictAddRow').addEventListener('click', () => addDictRow({ surface: '', reading: '', wrongs: [] }));
   $('btnDictSave').addEventListener('click', saveDictPage);
 }
@@ -454,31 +465,20 @@ async function run() {
     transcript = applyDictionary(transcript, state.dict);
     if (!transcript.trim()) throw new Error('文字起こし結果が空でした。音声が入っているファイルか確認してください');
 
-    const blocks = splitForRefine(transcript);
-    const refinedParts = [];
-    for (let i = 0; i < blocks.length; i++) {
-      setProgress(80 + (i / blocks.length) * 12,
-        blocks.length > 1 ? `テキストを整形中... (${i + 1}/${blocks.length})` : 'テキストを整形中...');
-      setEta(estimateTextPhase(blocks.length - i, 1));
-      const { text } = await gasCall('refine', {
-        text: blocks[i],
-        chunkIndex: i,
-        totalChunks: blocks.length,
-        prevTail: refinedParts.length ? refinedParts[refinedParts.length - 1].slice(-400) : '',
-      });
-      refinedParts.push(text.trim());
-    }
-    const refined = applyDictionary(refinedParts.join('\n\n'), state.dict);
+    const refined = await runRefine(transcript, (i, n) => {
+      setProgress(80 + (i / n) * 12, n > 1 ? `テキストを整形中... (${i + 1}/${n})` : 'テキストを整形中...');
+      setEta(estimateTextPhase(n - i, 1));
+    });
 
     setProgress(93, '要約を作成中...');
     setEta(estimateTextPhase(0, 1));
-    const { text: summary } = await gasCall('summarize', { text: transcript, hint: options.hint });
+    const summary = await runSummary(transcript, options.hint);
 
     setProgress(100, '完了しました！');
     setEta(null);
     clearJob();
 
-    const result = { fileName: file.name, transcript, refined, summary: summary.trim(), savedAt: Date.now() };
+    const result = { fileName: file.name, transcript, refined, summary, savedAt: Date.now() };
     saveResult(result);
     updateRestoreBox();
     showResult(result);
@@ -706,10 +706,10 @@ function downloadCurrent() {
   URL.revokeObjectURL(a.href);
 }
 
-function flashStatus(msg) {
+function flashStatus(msg, sticky = false) {
   const el = $('resultStatus');
   el.textContent = msg;
-  setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3000);
+  if (!sticky) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3000);
 }
 
 async function save() {
@@ -736,6 +736,130 @@ async function save() {
   } finally {
     state.busy = false;
     $('btnSave').disabled = false;
+  }
+}
+
+// ================================================================ 整形・要約（初回とやり直しで共通）
+
+/** 整形。長文は分割して順に送る。onStep(i, n) で進捗を通知 */
+async function runRefine(transcript, onStep) {
+  const custom = currentPrompts().refine;
+  const blocks = splitForRefine(transcript);
+  const parts = [];
+  for (let i = 0; i < blocks.length; i++) {
+    onStep?.(i, blocks.length);
+    const { text } = await gasCall('refine', {
+      text: blocks[i],
+      chunkIndex: i,
+      totalChunks: blocks.length,
+      prevTail: parts.length ? parts[parts.length - 1].slice(-400) : '',
+      customPrompt: custom,
+    });
+    parts.push(text.trim());
+  }
+  return applyDictionary(parts.join('\n\n'), state.dict);
+}
+
+async function runSummary(transcript, hint) {
+  const { text } = await gasCall('summarize', { text: transcript, hint, customPrompt: currentPrompts().summarize });
+  return applyDictionary(text.trim(), state.dict);
+}
+
+/** 結果画面の「作り直す」。文字起こし（編集後の内容）はそのまま使う */
+async function redoPart(kind) {
+  if (state.busy) return;
+  const transcript = $('transcriptArea').value.trim();
+  if (!transcript) {
+    showError('文字起こしの本文が空です');
+    return;
+  }
+  state.busy = true;
+  clearError();
+  const buttons = ['btnRedoRefine', 'btnRedoSummary', 'btnStart'].map($);
+  buttons.forEach((b) => { b.disabled = true; });
+  const area = kind === 'refine' ? $('refinedArea') : $('summaryArea');
+  area.classList.add('is-busy');
+  try {
+    if (!state.dict.length) {
+      try { state.dict = (await gasCall('dictGet')).entries || []; } catch { /* 辞書なしでも続ける */ }
+    }
+    if (kind === 'refine') {
+      const refined = await runRefine(transcript, (i, n) => flashStatus(n > 1 ? `整形を作り直しています... (${i + 1}/${n})` : '整形を作り直しています...', true));
+      $('refinedArea').value = refined;
+      state.originalRefined = refined;
+      flashStatus('整形を作り直しました');
+    } else {
+      flashStatus('要約を作り直しています...', true);
+      $('summaryArea').value = await runSummary(transcript, $('optHint').value.trim());
+      flashStatus('要約を作り直しました');
+    }
+    const last = loadResult();
+    saveResult({
+      fileName: state.resultFileName || last?.fileName || '',
+      transcript: $('transcriptArea').value,
+      refined: $('refinedArea').value,
+      summary: $('summaryArea').value,
+      savedAt: Date.now(),
+    });
+    updateRestoreBox();
+  } catch (err) {
+    flashStatus('');
+    showError((kind === 'refine' ? '整形' : '要約') + 'の作り直しに失敗しました: ' + err.message);
+  } finally {
+    area.classList.remove('is-busy');
+    buttons.forEach((b) => { b.disabled = false; });
+    $('btnStart').disabled = !state.file;
+    state.busy = false;
+  }
+}
+
+function redoRefine() { return redoPart('refine'); }
+function redoSummary() { return redoPart('summarize'); }
+
+// ---- カスタム指示の入力欄
+
+let promptDefaultsCache = null;
+
+function currentPrompts() {
+  return { refine: $('promptRefine').value.trim(), summarize: $('promptSummary').value.trim() };
+}
+
+function initPrompts() {
+  const p = loadPrompts();
+  $('promptRefine').value = p.refine;
+  $('promptSummary').value = p.summarize;
+  updatePromptBadge();
+}
+
+function updatePromptBadge() {
+  const p = currentPrompts();
+  $('promptBadge').hidden = !(p.refine || p.summarize);
+}
+
+function onPromptInput() {
+  savePrompts(currentPrompts());
+  updatePromptBadge();
+}
+
+function setPrompt(fieldId, value) {
+  $(fieldId).value = value;
+  onPromptInput();
+}
+
+async function loadDefaultPrompt(kind, fieldId) {
+  const status = $('promptStatus');
+  try {
+    if (!promptDefaultsCache) {
+      status.textContent = '読み込み中...';
+      promptDefaultsCache = await gasCall('promptDefaults');
+    }
+    setPrompt(fieldId, promptDefaultsCache[kind] || '');
+    status.textContent = '既定の指示を読み込みました。自由に書き換えてください';
+    $(fieldId).focus();
+  } catch (err) {
+    status.textContent = /不明なaction/.test(err.message)
+      ? 'サーバー（GAS）が古いため読み込めません。管理者にGASの更新を依頼してください'
+      : '読み込めませんでした: ' + err.message;
   }
 }
 

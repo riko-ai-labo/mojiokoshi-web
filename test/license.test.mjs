@@ -221,5 +221,37 @@ console.log('アップロードURLの安全性');
   check(!r.success && r.code === 'LICENSE_REQUIRED', 'uploadResult もキー無しでは使えない');
 }
 
+console.log('カスタム指示（整形・要約）');
+{
+  env.cache.clear();
+  env.run(`
+    var __prompts = [];
+    generate_ = function (parts) { __prompts.push(parts[0].text); return { text: 'OK' }; };
+    readDict_ = function () { return [{ surface: 'クレアカ', reading: 'くれあか', wrongs: [] }]; };
+  `);
+  const key = lic.rows[1][0];
+  const last = () => env.run('__prompts[__prompts.length - 1]');
+
+  let r = env.post({ action: 'summarize', licenseKey: key, text: '本文テキスト', hint: '' });
+  check(r.success && last().includes('■概要') && last().includes('本文テキスト'), '指示が空なら既定の要約指示を使う');
+
+  r = env.post({ action: 'summarize', licenseKey: key, text: '本文テキスト', customPrompt: '3行で要約して' });
+  check(r.success && last().startsWith('3行で要約して') && !last().includes('■概要'), 'カスタム指示で要約指示を丸ごと差し替える');
+  check(last().includes('本文のみを出力') && last().includes('本文テキスト'), '差し替えても「本文のみ」と文字起こし本体は必ず付く');
+
+  r = env.post({ action: 'refine', licenseKey: key, text: '整形前', chunkIndex: 1, totalChunks: 3, customPrompt: 'です・ます調に' });
+  const p = last();
+  check(r.success && p.startsWith('です・ます調に') && !p.includes('フィラー'), 'カスタム指示で整形指示を差し替える');
+  check(p.includes('3分割中の2番目') && p.includes('クレアカ') && p.includes('整形前'), '分割の注意・辞書・本文は必ず付く');
+
+  env.post({ action: 'refine', licenseKey: key, text: 'x', customPrompt: 'あ'.repeat(5000) });
+  check(!last().includes('あ'.repeat(4001)), 'カスタム指示は4000文字で切る');
+
+  r = env.post({ action: 'promptDefaults', licenseKey: key });
+  check(r.success && r.data.refine.includes('フィラー') && r.data.summarize.includes('■概要'), '既定の指示を取得できる');
+  r = env.post({ action: 'promptDefaults' });
+  check(!r.success && r.code === 'LICENSE_REQUIRED', '既定の指示の取得もキーが必要');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

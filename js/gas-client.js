@@ -6,7 +6,7 @@
  * - すべての呼び出しにライセンスキーを添える。キーが無効と言われたら 'license-invalid' イベントで画面側に知らせる
  */
 
-import { getLicenseKey } from './license.js?v=2.1.2';
+import { getLicenseKey } from './license.js?v=2.2.0';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3000;
