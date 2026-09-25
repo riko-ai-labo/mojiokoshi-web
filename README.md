@@ -86,7 +86,7 @@ GitHub Pages はブラウザにファイルを10分間保存させるため、�
 
 ```
 V=2.1.3   # 新しい番号
-sed -i -E "s#(from '\./[a-z-]+\.js)(\?v=[0-9.]+)?'#?v=$V'#g" js/*.js
+sed -i -E "s#(from '\./[a-z-]+\.js)(\?v=[0-9.]+)?'#\1?v=$V'#g" js/*.js
 sed -i -E "s#\?v=[0-9.]+\"#?v=$V\"#g" index.html
 ```
 
