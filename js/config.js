@@ -4,7 +4,7 @@
  */
 window.APP_CONFIG = {
   // GASウェブアプリのデプロイURL（https://script.google.com/macros/s/XXXX/exec）
-  GAS_URL: '',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbz02UksLpOOIgyy-zR_5ck5TWRdkbR1eqjrgGCFJlBcA2Flp-juxgg9YuNBfrk9bDiL/exec',
 
   // GCPで発行したOAuth 2.0クライアントID（xxxx.apps.googleusercontent.com）
   // 「Googleドライブに保存」を使うときだけ必要。空のままなら保存ボタンが非表示になる（コピー・txt保存は使える）
