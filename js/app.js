@@ -1,5 +1,5 @@
 /**
- * 文字起こしするちゃん Drive版 v2 - メインアプリ
+ * MOJI-OKO（旧: 文字起こしするちゃん Drive版 v2）- メインアプリ
  *
  * 流れ: ライセンスキー入力（サーバー側で照合） → ファイル選択（ブラウザ内で解析）
  *   → 音声を15分ずつ切り出してGeminiへ送り、順に文字起こし（次のチャンクは先にアップロードしておく）
@@ -101,6 +101,12 @@ function bindEvents() {
   const dropZone = $('dropZone');
   const fileInput = $('fileInput');
   dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
   fileInput.addEventListener('change', () => {
     if (fileInput.files[0]) setFile(fileInput.files[0]);
   });

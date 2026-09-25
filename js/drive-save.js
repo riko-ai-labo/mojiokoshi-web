@@ -1,13 +1,13 @@
 /**
  * ログインユーザー本人のGoogleドライブへの保存
  * drive.fileスコープ（このアプリが作ったファイルのみ操作可）で、
- * 「文字起こしするちゃん」フォルダを作り、その中に
+ * 「MOJI-OKO」フォルダを作り、その中に
  * シート1「文字起こし」／シート2「要約・整形」の2シート構成のスプレッドシートを作成する。
  */
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
-const FOLDER_NAME = '文字起こしするちゃん';
+const FOLDER_NAME = 'MOJI-OKO';
 
 async function apiFetch(token, url, options = {}) {
   const res = await fetch(url, {
