@@ -29,7 +29,7 @@
  *   - 文字起こしの利用分数を人ごと・月ごとに集計し、「月の上限(分)」を超えたら止める。
  */
 
-var VERSION = '2.1.0';
+var VERSION = '2.1.1';
 var DEFAULT_MODEL = 'gemini-2.5-flash';
 var GEMINI_BASE = 'https://generativelanguage.googleapis.com';
 
@@ -86,6 +86,7 @@ function doPost(e) {
       licenseCheck: function (d, lic) { return licensePublic_(lic); },
       startUpload: startUpload,
       fileStatus: fileStatus,
+      uploadResult: uploadResult,
       deleteFile: deleteFile,
       transcribe: transcribe,
       refine: refine,
@@ -162,7 +163,50 @@ function startUpload(d) {
   var headers = res.getHeaders();
   var uploadUrl = headers['x-goog-upload-url'] || headers['X-Goog-Upload-URL'];
   if (!uploadUrl) throw new Error('アップロードURLが取得できませんでした');
-  return { uploadUrl: uploadUrl };
+  // Geminiが返すURLにはAPIキー（key=）が含まれる。アップロードは upload_id だけで通るので、
+  // キーは必ず取り除いてからブラウザへ渡す（利用者にAPIキーを見せない）
+  return { uploadUrl: stripApiKey_(uploadUrl) };
+}
+
+/** URLのクエリから key= を取り除く */
+function stripApiKey_(url) {
+  var parts = String(url).split('?');
+  if (parts.length < 2) return url;
+  var query = parts.slice(1).join('?').split('&').filter(function (kv) {
+    return kv && kv.split('=')[0] !== 'key';
+  });
+  return parts[0] + (query.length ? '?' + query.join('&') : '');
+}
+
+/** ブラウザから渡されたURLが、Geminiのアップロードセッションであることを確認する */
+function assertUploadUrl_(url) {
+  var ok = /^https:\/\/generativelanguage\.googleapis\.com\/upload\/v1beta\/files\?/.test(String(url || '')) &&
+    /[?&]upload_id=[A-Za-z0-9_\-]+/.test(url);
+  if (!ok) throw new Error('アップロードURLが不正です');
+  return stripApiKey_(url);
+}
+
+/**
+ * アップロード完了の確認（ブラウザが結果を読めなかったときの代わり）。
+ * Geminiのアップロード完了レスポンスにはCORSヘッダーが付かないため、ブラウザからは
+ * 「ネットワークエラー」に見える。実際には届いているので、サーバー側でセッションの状態を問い合わせる。
+ */
+function uploadResult(d) {
+  var url = assertUploadUrl_(d.uploadUrl);
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    headers: { 'X-Goog-Upload-Command': 'query' },
+    muteHttpExceptions: true
+  });
+  var headers = res.getHeaders();
+  var status = headers['x-goog-upload-status'] || headers['X-Goog-Upload-Status'] || '';
+  var received = Number(headers['x-goog-upload-size-received'] || headers['X-Goog-Upload-Size-Received'] || 0);
+  if (res.getResponseCode() >= 400) {
+    return { status: 'error', received: received, message: res.getContentText().slice(0, 300) };
+  }
+  if (status !== 'final') return { status: status || 'unknown', received: received };
+  var body = JSON.parse(res.getContentText() || '{}');
+  return { status: 'final', received: received, file: body.file || null };
 }
 
 /** Gemini側のファイル処理状態を返す（ACTIVEになるまでクライアントがポーリング） */

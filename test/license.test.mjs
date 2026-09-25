@@ -203,5 +203,23 @@ console.log('利用量の集計と上限');
     '利用ログに名前とキー末尾4桁だけが残る', JSON.stringify(log?.rows));
 }
 
+console.log('アップロードURLの安全性');
+{
+  const strip = (u) => env.run(`stripApiKey_(${JSON.stringify(u)})`);
+  const base = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
+  check(strip(base + '?key=SECRET&upload_id=AbC-1_x&upload_protocol=resumable') === base + '?upload_id=AbC-1_x&upload_protocol=resumable',
+    '先頭の key= を取り除く');
+  check(strip(base + '?upload_id=A1&key=SECRET&upload_protocol=resumable') === base + '?upload_id=A1&upload_protocol=resumable',
+    '途中の key= を取り除く');
+  check(!strip(base + '?upload_id=A1&upload_protocol=resumable&key=SECRET').includes('SECRET'), '末尾の key= を取り除く');
+  const bad = (u) => { try { env.run(`assertUploadUrl_(${JSON.stringify(u)})`); return false; } catch { return true; } };
+  check(!bad(base + '?upload_id=A1&upload_protocol=resumable'), '正しいアップロードURLは通す');
+  check(bad('https://evil.example.com/upload/v1beta/files?upload_id=A1'), '他のサイトのURLは拒否（GASを踏み台にさせない）');
+  check(bad(base + '?upload_protocol=resumable'), 'upload_id の無いURLは拒否');
+  check(bad('http://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=A1'), 'httpは拒否');
+  const r = env.post({ action: 'uploadResult', uploadUrl: base + '?upload_id=A1' });
+  check(!r.success && r.code === 'LICENSE_REQUIRED', 'uploadResult もキー無しでは使えない');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

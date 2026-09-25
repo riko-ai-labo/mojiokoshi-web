@@ -62,11 +62,27 @@ export async function uploadBlob(blob, mimeType, displayName, onProgress) {
         reject(new Error(`ファイルアップロードに失敗しました (${xhr.status})`));
       }
     };
-    xhr.onerror = () => reject(new Error('アップロード中にネットワークエラーが発生しました'));
+    // Geminiの完了レスポンスにはCORSヘッダーが無く、送信は成功していてもブラウザには読めない（onerrorになる）。
+    // その場合はサーバー（GAS）に結果を問い合わせる。本当に途中で切れていたらここでエラーになる
+    xhr.onerror = () => {
+      confirmUpload(uploadUrl, blob.size).then(resolve, reject);
+    };
     xhr.send(blob);
   });
 
   return result.file;
+}
+
+async function confirmUpload(uploadUrl, size) {
+  let res;
+  try {
+    res = await gasCall('uploadResult', { uploadUrl });
+  } catch (err) {
+    throw new Error('アップロード結果を確認できませんでした: ' + err.message);
+  }
+  if (res.status === 'final' && res.file) return { file: res.file };
+  const pct = size ? Math.round((res.received / size) * 100) : 0;
+  throw new Error(`アップロード中に通信が途切れました（${pct}%まで送信）。通信環境を確認して、もう一度開始してください`);
 }
 
 /** Gemini側のファイル処理がACTIVEになるまで待つ（音声は数秒、動画は数分かかることがある） */
